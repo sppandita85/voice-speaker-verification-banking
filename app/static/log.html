@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Call Log</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <strong>Demo Bank · Card Balance Voice Bot</strong>
+  <a href="/">Call simulator</a>
+  <a href="/enroll">Voice enrollment</a>
+  <a href="/log" class="active">Call log</a>
+</header>
+<main>
+  <div class="panel">
+    <h2>Calls <button id="refresh" style="float:right">Refresh</button></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Started (UTC)</th><th>Customer</th><th>Turns</th><th>Outcome</th><th>Handover reason</th></tr></thead>
+        <tbody id="calls"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2 id="turns-title">Turns <span class="note">(click a call)</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>State</th><th>Caller said (masked)</th><th>Intent</th><th>Score</th><th>Verify</th>
+          <th>Bot replied (masked)</th><th>Source</th><th>Model / prompt</th><th>Latency</th></tr></thead>
+        <tbody id="turns"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script src="/static/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const OUTCOME = { served: "ok", handed_over: "warn", failed_verification: "bad" };
+
+function cells(tr, values) {
+  values.forEach((v) => { const td = el("td"); if (v instanceof Node) td.appendChild(v); else td.textContent = v ?? ""; tr.appendChild(td); });
+}
+
+function badge(outcome) {
+  return el("span", { class: "badge " + (OUTCOME[outcome] || "muted") }, outcome);
+}
+
+async function loadCalls() {
+  const calls = await getJSON("/api/calls");
+  $("calls").innerHTML = "";
+  calls.forEach((c) => {
+    const tr = el("tr", { class: "clickable" });
+    cells(tr, [c.started_at.replace("T", " ").slice(0, 19), c.customer_id ?? "unidentified", c.turns, badge(c.outcome), c.handover_reason]);
+    tr.onclick = () => loadTurns(c.id);
+    $("calls").appendChild(tr);
+  });
+}
+
+async function loadTurns(id) {
+  const call = await getJSON(`/api/calls/${id}`);
+  $("turns-title").textContent = `Turns of call ${id.slice(0, 8)}`;
+  $("turns").innerHTML = "";
+  call.turns.forEach((t) => {
+    const tr = el("tr");
+    const parts = [["stt", t.stt_ms], ["llm", t.llm_ms], ["tts", t.tts_ms]].filter(([, v]) => v).map(([k, v]) => `${k} ${v}`);
+    const latency = `${t.latency_ms} ms` + (parts.length ? ` (${parts.join(", ")})` : "");
+    cells(tr, [t.seq, t.state, t.transcript_masked, t.intent, t.voice_score?.toFixed(3), t.verify_result,
+      t.bot_reply_masked, t.reply_source, [t.llm_model, t.prompt_version].filter(Boolean).join(" · "), latency]);
+    $("turns").appendChild(tr);
+  });
+}
+
+$("refresh").onclick = loadCalls;
+loadCalls();
+</script>
+</body>
+</html>

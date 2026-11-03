@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Call Simulator</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <strong>Demo Bank · Card Balance Voice Bot</strong>
+  <a href="/" class="active">Call simulator</a>
+  <a href="/enroll">Voice enrollment</a>
+  <a href="/log">Call log</a>
+</header>
+<main class="grid">
+  <section>
+    <div class="panel">
+      <h2>Start a call</h2>
+      <label for="customer">Demo customer</label>
+      <select id="customer"></select>
+      <p class="note" id="scenario"></p>
+      <div class="row">
+        <button class="primary" id="start">Start call</button>
+        <button id="unlock" title="Clear the verification lock for this customer">Unlock</button>
+      </div>
+      <p class="note" id="providers"></p>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h2>Verification</h2>
+      <dl class="kv">
+        <dt>State</dt><dd id="state">–</dd>
+        <dt>Verified</dt><dd id="verified">–</dd>
+        <dt>Caller</dt><dd id="caller" class="muted">hidden until verified</dd>
+        <dt>Voice score</dt><dd id="score">–</dd>
+        <dt>Result</dt><dd id="vresult">–</dd>
+        <dt>Intent</dt><dd id="intent">–</dd>
+        <dt>Reply from</dt><dd id="source">–</dd>
+        <dt>Outcome</dt><dd id="outcome">–</dd>
+      </dl>
+      <div class="scorebar" id="bar"><div class="marker" id="marker" style="display:none"></div></div>
+      <p class="note" id="legend" style="margin:0"></p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Conversation</h2>
+    <div class="chat" id="chat"></div>
+    <button class="ptt primary" id="ptt" disabled>Hold to talk (or hold Space)</button>
+    <div class="row">
+      <input type="text" id="text" placeholder="…or type what the caller says (typed input skips voice ID)" disabled>
+      <button id="send" disabled>Send</button>
+    </div>
+  </section>
+</main>
+
+<script src="/static/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let callId = null, customers = [], cfg = {};
+
+function addMsg(who, text, meta) {
+  const m = el("div", { class: "msg " + who }, text);
+  if (meta) m.appendChild(el("small", {}, meta));
+  $("chat").appendChild(m);
+  $("chat").scrollTop = $("chat").scrollHeight;
+}
+
+function setLive(on) {
+  ["ptt", "text", "send"].forEach((id) => ($(id).disabled = !on));
+}
+
+function render(r) {
+  $("state").textContent = r.state;
+  $("verified").innerHTML = r.verified ? '<span class="badge ok">verified</span>' : '<span class="badge muted">not yet</span>';
+  $("caller").textContent = r.customer || "hidden until verified";
+  $("caller").className = r.customer ? "" : "muted";
+  if (r.voice_score !== null && r.voice_score !== undefined) {
+    $("score").textContent = r.voice_score.toFixed(3);
+    const pct = Math.max(0, Math.min(1, r.voice_score)) * 100;
+    $("marker").style.display = "block";
+    $("marker").style.left = `calc(${pct}% - 1px)`;
+  }
+  if (r.verify_result) {
+    const cls = { voice_pass: "ok", step_up_pass: "ok", step_up: "warn", too_short: "warn", no_voiceprint: "warn", no_audio: "warn" }[r.verify_result] || "bad";
+    $("vresult").innerHTML = `<span class="badge ${cls}">${r.verify_result}</span>`;
+  }
+  if (r.intent) $("intent").textContent = r.intent;
+  if (r.reply_source) $("source").textContent = r.reply_source === "llm" ? "LLM (checked)" : "template (LLM rejected or unused)";
+  const oc = { served: "ok", handed_over: "warn", failed_verification: "bad" }[r.outcome] || "muted";
+  $("outcome").innerHTML = `<span class="badge ${oc}">${r.outcome}</span>` + (r.handover_reason ? ` <span class="muted">${r.handover_reason}</span>` : "");
+  if (r.state === "ended") { setLive(false); callId = null; }
+}
+
+async function send(form) {
+  setLive(false);
+  try {
+    const r = await postForm(`/api/calls/${callId}/turn`, form);
+    addMsg("me", r.transcript || "(nothing heard)");
+    addMsg("bot", r.reply);
+    render(r);
+    await playWav(r.audio_b64);
+  } catch (e) { addMsg("bot", "Error: " + e.message); }
+  if (callId) setLive(true);
+}
+
+async function loadCustomers() {
+  customers = await getJSON("/api/customers");
+  const sel = $("customer"), keep = sel.value;
+  sel.innerHTML = "";
+  sel.appendChild(el("option", { value: "" }, "Unknown caller (say your mobile number)"));
+  customers.forEach((c) => sel.appendChild(el("option", { value: c.id },
+    `${c.id}. ${c.name}${c.enrolled ? "" : " (not enrolled)"}${c.locked ? " 🔒" : ""}`)));
+  sel.value = keep;
+  showScenario();
+}
+
+function showScenario() {
+  const c = customers.find((x) => String(x.id) === $("customer").value);
+  $("scenario").textContent = c ? `Scenario: ${c.scenario} · ${c.mobile_masked}` : "The bot will ask for the mobile number and use that utterance for voice ID.";
+}
+
+$("customer").onchange = showScenario;
+
+$("start").onclick = async () => {
+  $("chat").innerHTML = "";
+  ["state", "verified", "score", "vresult", "intent", "source", "outcome"].forEach((id) => ($(id).textContent = "–"));
+  $("marker").style.display = "none";
+  const id = $("customer").value;
+  const r = await postJSON("/api/calls", { customer_id: id ? Number(id) : null });
+  callId = r.call_id;
+  addMsg("bot", r.reply);
+  render(r);
+  if (r.state !== "ended") setLive(true);
+  await playWav(r.audio_b64);
+};
+
+$("unlock").onclick = async () => {
+  const id = $("customer").value;
+  if (!id) return;
+  await postJSON(`/api/customers/${id}/unlock`);
+  await loadCustomers();
+};
+
+$("send").onclick = () => {
+  const text = $("text").value.trim();
+  if (!text || !callId) return;
+  $("text").value = "";
+  const form = new FormData();
+  form.append("text", text);
+  send(form);
+};
+$("text").addEventListener("keydown", (e) => e.key === "Enter" && $("send").click());
+
+const ptt = pushToTalk($("ptt"), (blob) => {
+  const form = new FormData();
+  form.append("audio", blob, "turn.webm");
+  send(form);
+});
+document.addEventListener("keydown", (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT" && !e.repeat) { e.preventDefault(); ptt.start(); } });
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && e.target.tagName !== "INPUT") { e.preventDefault(); ptt.stop(); } });
+
+(async () => {
+  cfg = await getJSON("/api/config");
+  $("providers").textContent = `Speech: ${cfg.speech_provider} · LLM: ${cfg.llm_model} · accept ≥ ${cfg.accept_threshold}, step-up ≥ ${cfg.stepup_threshold}`;
+  $("bar").style.setProperty("--s", cfg.stepup_threshold * 100 + "%");
+  $("bar").style.setProperty("--a", cfg.accept_threshold * 100 + "%");
+  $("legend").textContent = `fail < ${cfg.stepup_threshold} ≤ step-up < ${cfg.accept_threshold} ≤ pass`;
+  await loadCustomers();
+})();
+</script>
+</body>
+</html>

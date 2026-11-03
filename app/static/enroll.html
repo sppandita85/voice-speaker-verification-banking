@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Enrollment</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <strong>Demo Bank · Card Balance Voice Bot</strong>
+  <a href="/">Call simulator</a>
+  <a href="/enroll" class="active">Voice enrollment</a>
+  <a href="/log">Call log</a>
+</header>
+<main>
+  <div class="panel">
+    <h2>Enroll a voiceprint</h2>
+    <p class="note">Pick a demo customer, then hold each button and read the sentence (about 3–5 seconds each).
+      The three samples are turned into ECAPA embeddings and averaged into one voiceprint. Enrolling again replaces it.</p>
+    <label for="customer">Demo customer</label>
+    <select id="customer"></select>
+
+    <div id="samples"></div>
+    <div class="row">
+      <button class="primary" id="save" disabled>Save voiceprint</button>
+      <span id="result" class="note"></span>
+    </div>
+  </div>
+</main>
+
+<script src="/static/common.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const SENTENCES = [
+  "Hello, I'm calling Demo Bank about my credit card statement this month.",
+  "Please tell me my outstanding balance and when my next payment is due.",
+  "The quick brown fox jumps over the lazy dog beside the quiet river bank.",
+];
+const blobs = [null, null, null];
+
+SENTENCES.forEach((text, i) => {
+  const row = el("div", { class: "sample" });
+  row.appendChild(el("p", {}, `${i + 1}. “${text}”`));
+  const btn = el("button", {}, "Hold to record");
+  const status = el("span", { class: "note" }, "not recorded");
+  const play = el("button", {}, "▶");
+  play.disabled = true;
+  play.onclick = () => new Audio(URL.createObjectURL(blobs[i])).play();
+  row.append(btn, play, status);
+  $("samples").appendChild(row);
+  pushToTalk(btn, (blob) => {
+    blobs[i] = blob;
+    status.textContent = `recorded (${Math.round(blob.size / 1024)} KB)`;
+    status.className = "note ok";
+    play.disabled = false;
+    $("save").disabled = blobs.some((b) => !b);
+  });
+});
+
+$("save").onclick = async () => {
+  const form = new FormData();
+  blobs.forEach((b, i) => form.append("samples", b, `sample${i}.webm`));
+  $("result").textContent = "Computing embeddings…";
+  try {
+    const r = await postForm(`/api/enroll/${$("customer").value}`, form);
+    const quality = r.consistency >= 0.6 ? "good" : r.consistency >= 0.45 ? "fair (re-record in a quieter spot?)" : "poor: re-record";
+    $("result").textContent = `Saved ${r.samples} samples (${r.seconds.join("s, ")}s). Consistency ${r.consistency}: ${quality}.`;
+    loadCustomers();
+  } catch (e) { $("result").textContent = "Error: " + e.message; }
+};
+
+async function loadCustomers() {
+  const sel = $("customer"), keep = sel.value;
+  const customers = await getJSON("/api/customers");
+  sel.innerHTML = "";
+  customers.forEach((c) => sel.appendChild(el("option", { value: c.id }, `${c.id}. ${c.name}${c.enrolled ? " ✓ enrolled" : ""}`)));
+  if (keep) sel.value = keep;
+}
+loadCustomers();
+</script>
+</body>
+</html>
