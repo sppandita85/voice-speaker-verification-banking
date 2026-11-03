@@ -22,5 +22,10 @@ def mask_pii(text: str) -> str:
 
 def setup_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    quiet_noisy_loggers()
+
+
+def quiet_noisy_loggers() -> None:
+    """Call again after the models load: SpeechBrain resets its own log level on import."""
     for noisy in ("speechbrain", "httpx", "faster_whisper"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

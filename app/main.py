@@ -20,7 +20,7 @@ from app.calls import CallManager, CallNotFound
 from app.config import Settings, get_settings
 from app.db import init_db, make_engine, make_session_factory
 from app.dialog.verification import average_embedding, cosine
-from app.logging_utils import setup_logging
+from app.logging_utils import quiet_noisy_loggers, setup_logging
 from app.models import Call, Turn, Voiceprint
 from app.providers import Providers, build_providers
 from app.speech.base import AudioClip
@@ -44,6 +44,7 @@ def create_app(settings: Settings | None = None, providers: Providers | None = N
         init_db(engine)
         started = time.perf_counter()
         p = providers or build_providers(settings)
+        quiet_noisy_loggers()
         log.info("Providers ready in %.1fs (speech=%s, llm=%s)", time.perf_counter() - started,
                  settings.speech_provider, settings.llm_provider)
         app.state.calls = CallManager(settings, Session, p)

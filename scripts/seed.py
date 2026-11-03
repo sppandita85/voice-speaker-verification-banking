@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sqlalchemy import select  # noqa: E402
 
+from app import repo  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import Base, init_db, make_engine, make_session_factory  # noqa: E402
 from app.models import Voiceprint  # noqa: E402
@@ -44,9 +45,8 @@ def main() -> None:
 
     with Session() as s:
         demo = seed(s, settings.mobile_hash_salt, fake_voiceprints=args.fake_voiceprints)
-        for customer_id, embedding, count, model in kept:
-            s.merge(Voiceprint(customer_id=customer_id, embedding=embedding, sample_count=count, model=model))
-        s.commit()
+        for customer_id, embedding, count, model in kept:  # replaces a fake one if both exist
+            repo.save_voiceprint(s, customer_id, embedding, count, model)
 
     out = Path("data/demo_customers.csv")
     out.parent.mkdir(exist_ok=True)
