@@ -1,8 +1,10 @@
-# Local speech models (large download: torch is ~1 GB)
+# Local speech models (large download: torch is the biggest part)
 -r requirements.txt
-faster-whisper==1.1.0
-piper-tts==1.2.0
-speechbrain==1.0.2
+faster-whisper==1.2.1
+piper-tts==1.3.0
+speechbrain==1.0.3
+huggingface_hub>=0.25,<1.0  # speechbrain 1.0.x still passes use_auth_token, removed in hub 1.0
 torch==2.5.1
 torchaudio==2.5.1
-numpy<2.1
+requests  # faster-whisper imports it; newer huggingface_hub no longer pulls it in
+numpy
