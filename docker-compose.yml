@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16
+    network_mode: bridge   # reuse the default network (Docker Desktop can run out of address pools)
+    environment:
+      POSTGRES_USER: voicebot
+      POSTGRES_PASSWORD: voicebot
+      POSTGRES_DB: voicebot
+    ports:
+      - "5434:5432"   # 5434 on the host so it does not clash with other local Postgres containers
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voicebot"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:

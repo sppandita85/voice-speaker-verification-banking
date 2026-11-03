@@ -1,0 +1,8 @@
+# Local speech models (large download: torch is ~1 GB)
+-r requirements.txt
+faster-whisper==1.1.0
+piper-tts==1.2.0
+speechbrain==1.0.2
+torch==2.5.1
+torchaudio==2.5.1
+numpy<2.1
