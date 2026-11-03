@@ -3,12 +3,17 @@
 Money is stored as integer fils (1 AED = 100 fils) so there is never any float rounding.
 The full mobile number is never stored: only a salted hash (for lookup) and a masked copy.
 """
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+
+
+def utcnow() -> datetime:
+    """Naive UTC timestamp (stored without a time zone)."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Customer(Base):
@@ -60,7 +65,7 @@ class Voiceprint(Base):
     embedding: Mapped[list[float]] = mapped_column(JSON)  # 192 floats from ECAPA
     sample_count: Mapped[int] = mapped_column(Integer)
     model: Mapped[str] = mapped_column(String(100))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Call(Base):
@@ -68,7 +73,7 @@ class Call(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     outcome: Mapped[str] = mapped_column(String(30), default="in_progress")
     handover_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -95,4 +100,4 @@ class Turn(Base):
     llm_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tts_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
